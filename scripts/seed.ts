@@ -76,6 +76,8 @@ async function seed() {
     DROP TABLE IF EXISTS coupons;
     DROP TABLE IF EXISTS team_members;
     DROP TABLE IF EXISTS teams;
+    DROP TABLE IF EXISTS refund_requests;
+    -- Pre-0010 name of refund_requests, still present in databases seeded before the rename.
     DROP TABLE IF EXISTS refunds;
     DROP TABLE IF EXISTS purchases;
     DROP TABLE IF EXISTS enrollments;
@@ -2434,7 +2436,7 @@ This course is still in draft while the cluster examples are rewritten against t
   // Returns false if there was nothing they could have bought on that day — a
   // course cannot be sold before it was created, and nobody buys twice.
   function buyCourse(
-    buyer: (typeof cohort)[number],
+    purchaser: (typeof cohort)[number],
     purchasedDaysAgo: number
   ): boolean {
     const purchasedAt = Date.parse(daysAgo(purchasedDaysAgo));
@@ -2442,13 +2444,13 @@ This course is still in draft while the cluster examples are rewritten against t
     const available = sellableCourses.filter(
       (c) =>
         Date.parse(c.course.createdAt) <= purchasedAt &&
-        !sold.has(`${buyer.id}:${c.course.id}`)
+        !sold.has(`${purchaser.id}:${c.course.id}`)
     );
 
     if (available.length === 0) return false;
 
     const target = available[Math.floor(random() * available.length)];
-    sold.add(`${buyer.id}:${target.course.id}`);
+    sold.add(`${purchaser.id}:${target.course.id}`);
 
     // Two in five buy at a parity-adjusted price.
     const ppp = random() < 0.4;
@@ -2461,7 +2463,7 @@ This course is still in draft while the cluster examples are rewritten against t
 
     db.insert(schema.purchases)
       .values({
-        userId: buyer.id,
+        userId: purchaser.id,
         courseId: target.course.id,
         amountPaid,
         country,
@@ -2472,7 +2474,7 @@ This course is still in draft while the cluster examples are rewritten against t
 
     db.insert(schema.enrollments)
       .values({
-        userId: buyer.id,
+        userId: purchaser.id,
         courseId: target.course.id,
         enrolledAt: daysAgo(purchasedDaysAgo),
       })
@@ -2480,7 +2482,7 @@ This course is still in draft while the cluster examples are rewritten against t
     generatedEnrollments++;
 
     generatedProgressRows += generateProgress(
-      buyer.id,
+      purchaser.id,
       target,
       purchasedDaysAgo
     );
@@ -2494,13 +2496,13 @@ This course is still in draft while the cluster examples are rewritten against t
   // Purchases hang off sign-up dates, which already span the year: everyone buys
   // something within days of joining, and about two in five come back for a
   // second course a few months later.
-  for (const buyer of cohort) {
-    const joined = signupDaysAgo(buyer);
+  for (const purchaser of cohort) {
+    const joined = signupDaysAgo(purchaser);
 
-    buyCourse(buyer, Math.max(0, joined - Math.floor(random() * 4)));
+    buyCourse(purchaser, Math.max(0, joined - Math.floor(random() * 4)));
 
     if (random() < 0.42) {
-      buyCourse(buyer, Math.max(1, joined - 90 - Math.floor(random() * 20)));
+      buyCourse(purchaser, Math.max(1, joined - 90 - Math.floor(random() * 20)));
     }
   }
 
@@ -2724,9 +2726,9 @@ This course is still in draft while the cluster examples are rewritten against t
   );
 
   // ─── Liam's Purchase ───
-  // One learner part-way through a recent purchase, with no request raised, so
-  // the course page offers "Cancel my purchase". The dates count back from
-  // today, so the fourteen-day refund window is still open whenever you seed.
+  // One Purchaser part-way through a recent Purchase, with no Refund Request
+  // made, so the course page offers "Request a refund". The dates count back
+  // from today, so the fourteen-day Refund Window is still open whenever you seed.
 
   const liam = studentByEmail("liam@example.com");
   db

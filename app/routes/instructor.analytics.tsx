@@ -123,7 +123,7 @@ type StudentRevenue = {
   revenueCents: number;
 };
 
-type TopBuyer = {
+type TopPurchaser = {
   userId: number;
   name: string;
   email: string;
@@ -307,13 +307,13 @@ function getStudentRevenue(
   }));
 }
 
-const TOP_BUYER_LIMIT = 10;
+const TOP_PURCHASER_LIMIT = 10;
 
-function getTopBuyers(
+function getTopPurchasers(
   instructorId: number | null,
   range: AnalyticsRange
-): TopBuyer[] {
-  const buyers = db
+): TopPurchaser[] {
+  const purchasers = db
     .select({
       userId: users.id,
       name: users.name,
@@ -327,12 +327,12 @@ function getTopBuyers(
     .where(purchaseScope(instructorId, range))
     .groupBy(users.id)
     .orderBy(desc(sum(purchases.amountPaid)))
-    .limit(TOP_BUYER_LIMIT)
+    .limit(TOP_PURCHASER_LIMIT)
     .all();
 
-  if (buyers.length === 0) return [];
+  if (purchasers.length === 0) return [];
 
-  const buyerIds = buyers.map((buyer) => buyer.userId);
+  const purchaserIds = purchasers.map((purchaser) => purchaser.userId);
 
   // Seats are counted in their own query: joining coupons to purchases above
   // would repeat each purchase once per seat and multiply the spend the
@@ -348,7 +348,7 @@ function getTopBuyers(
     .innerJoin(courses, eq(purchases.courseId, courses.id))
     .where(
       and(
-        inArray(purchases.userId, buyerIds),
+        inArray(purchases.userId, purchaserIds),
         purchaseScope(instructorId, range)
       )
     )
@@ -364,20 +364,20 @@ function getTopBuyers(
       .selectDistinct({ userId: enrollments.userId })
       .from(enrollments)
       .innerJoin(courses, eq(enrollments.courseId, courses.id))
-      .where(and(inArray(enrollments.userId, buyerIds), ownedBy(instructorId)))
+      .where(and(inArray(enrollments.userId, purchaserIds), ownedBy(instructorId)))
       .all()
       .map((row) => row.userId)
   );
 
-  return buyers.map((buyer) => ({
-    userId: buyer.userId,
-    name: buyer.name,
-    email: buyer.email,
-    spendCents: Number(buyer.spend ?? 0),
-    purchaseCount: buyer.purchaseCount,
-    seatsBought: seatsByUser.get(buyer.userId)?.bought ?? 0,
-    seatsUnredeemed: Number(seatsByUser.get(buyer.userId)?.unredeemed ?? 0),
-    enrolled: enrolled.has(buyer.userId),
+  return purchasers.map((purchaser) => ({
+    userId: purchaser.userId,
+    name: purchaser.name,
+    email: purchaser.email,
+    spendCents: Number(purchaser.spend ?? 0),
+    purchaseCount: purchaser.purchaseCount,
+    seatsBought: seatsByUser.get(purchaser.userId)?.bought ?? 0,
+    seatsUnredeemed: Number(seatsByUser.get(purchaser.userId)?.unredeemed ?? 0),
+    enrolled: enrolled.has(purchaser.userId),
   }));
 }
 
@@ -927,10 +927,10 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     .sort((a, b) => b.grossCents - a.grossCents);
 
   // How many people paid, and how many are learning. Deliberately two numbers:
-  // one team purchase is a single buyer covering several seats, and someone who
+  // one team purchase is a single purchaser covering several seats, and someone who
   // redeems a seat enrols without a purchase row of their own.
-  const buyerCountRow = db
-    .select({ buyerCount: countDistinct(purchases.userId) })
+  const purchaserCountRow = db
+    .select({ purchaserCount: countDistinct(purchases.userId) })
     .from(purchases)
     .innerJoin(courses, eq(purchases.courseId, courses.id))
     .where(purchaseScope(instructorId, range))
@@ -943,7 +943,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
   );
 
   const audience = {
-    buyerCount: buyerCountRow?.buyerCount ?? 0,
+    purchaserCount: purchaserCountRow?.purchaserCount ?? 0,
     studentCount: students.length,
     revenuePerStudentCents:
       students.length === 0
@@ -985,7 +985,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     // it are still reported, because months of silence is the urgent case.
     questions,
     audience,
-    buyers: getTopBuyers(instructorId, range),
+    purchasers: getTopPurchasers(instructorId, range),
     ratings: getRatingSummary(instructorId, range),
     tab,
     range,
@@ -1093,12 +1093,12 @@ function StatCard({
   );
 }
 
-function TopBuyers({
-  buyers,
+function TopPurchasers({
+  purchasers,
 }: {
-  buyers: Route.ComponentProps["loaderData"]["buyers"];
+  purchasers: Route.ComponentProps["loaderData"]["purchasers"];
 }) {
-  if (buyers.length === 0) {
+  if (purchasers.length === 0) {
     return (
       <p className="py-12 text-center text-sm text-muted-foreground">
         Nobody has bought anything in this period, so there is nobody to reach
@@ -1111,51 +1111,51 @@ function TopBuyers({
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b text-left text-muted-foreground">
-          <th className="pb-2 font-medium">Buyer</th>
+          <th className="pb-2 font-medium">Purchaser</th>
           <th className="pb-2 font-medium">Seats</th>
           <th className="pb-2 text-right font-medium">Purchases</th>
           <th className="pb-2 text-right font-medium">Total spend</th>
         </tr>
       </thead>
       <tbody>
-        {buyers.map((buyer) => (
-          <tr key={buyer.userId} className="border-b">
+        {purchasers.map((purchaser) => (
+          <tr key={purchaser.userId} className="border-b">
             <td className="py-3">
-              <div className="font-medium">{buyer.name}</div>
-              <div className="text-xs text-muted-foreground">{buyer.email}</div>
+              <div className="font-medium">{purchaser.name}</div>
+              <div className="text-xs text-muted-foreground">{purchaser.email}</div>
             </td>
             <td className="py-3">
-              {buyer.seatsBought > 0 && (
+              {purchaser.seatsBought > 0 && (
                 <div>
                   <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium">
                     Team
                   </span>{" "}
                   <span className="text-xs text-muted-foreground">
-                    bought {buyer.seatsBought},{" "}
-                    {buyer.seatsUnredeemed > 0 ? (
+                    bought {purchaser.seatsBought},{" "}
+                    {purchaser.seatsUnredeemed > 0 ? (
                       // The prompt to chase: seats paid for that nobody is
                       // using are the most actionable thing on this table.
                       <span className="font-medium text-foreground">
-                        {buyer.seatsUnredeemed} unused
+                        {purchaser.seatsUnredeemed} unused
                       </span>
                     ) : (
-                      "all claimed"
+                      "all redeemed"
                     )}
                   </span>
                 </div>
               )}
-              {/* Said of team buyers too, not just solo ones: the manager who
+              {/* Said of team purchasers too, not just solo ones: the manager who
                   bought a dozen seats and never opened the course is the very
                   person this table exists to surface. */}
               <div className="text-xs text-muted-foreground">
-                {buyer.enrolled ? "Enrolled" : "Never enrolled"}
+                {purchaser.enrolled ? "Enrolled" : "Never enrolled"}
               </div>
             </td>
             <td className="py-3 text-right tabular-nums">
-              {buyer.purchaseCount}
+              {purchaser.purchaseCount}
             </td>
             <td className="py-3 text-right font-medium tabular-nums">
-              {formatMoney(buyer.spendCents)}
+              {formatMoney(purchaser.spendCents)}
             </td>
           </tr>
         ))}
@@ -1421,7 +1421,7 @@ function QuizPassRates({ quizzes }: { quizzes: QuizPassRate[] }) {
   );
 }
 
-/** Where a course's buyers are, and what parity pricing costs the seller. */
+/** Where a course's purchasers are, and what parity pricing costs the seller. */
 function RevenueByCountry({ breakdown }: { breakdown: CourseCountryRevenue }) {
   if (breakdown.rows.length === 0) {
     return (
@@ -1519,7 +1519,7 @@ export default function InstructorAnalytics({
     instructors,
     unpublished,
     audience,
-    buyers,
+    purchasers,
     questions,
     ratings,
   } = loaderData;
@@ -1654,15 +1654,15 @@ export default function InstructorAnalytics({
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
-                label="Buyers"
-                value={audience.buyerCount}
+                label="Purchasers"
+                value={audience.purchaserCount}
                 hint="People who paid. A team buying several seats counts once."
                 emptyHint="Nobody has bought in this period."
               />
               <StatCard
                 label="Enrolled students"
                 value={audience.studentCount}
-                hint={`Learners with access, seats included.${
+                hint={`Everyone enrolled, redeemed seats included.${
                   audience.revenuePerStudentCents === null
                     ? ""
                     : ` ${formatMoney(
@@ -1728,12 +1728,12 @@ export default function InstructorAnalytics({
 
             <Card>
               <CardContent className="p-6">
-                <h2 className="text-lg font-semibold">Top buyers</h2>
+                <h2 className="text-lg font-semibold">Top purchasers</h2>
                 <p className="mb-4 text-sm text-muted-foreground">
                   Your ten biggest spenders in this period — the people worth
                   reaching out to.
                 </p>
-                <TopBuyers buyers={buyers} />
+                <TopPurchasers purchasers={purchasers} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -1809,7 +1809,7 @@ export default function InstructorAnalytics({
 
             {/* Both panels sit outside the enrolment gate above: a quiz with
                 nobody enrolled to sit it, and money arriving before anybody
-                claims their seat, are things an instructor should still be
+                redeems their seat, are things an instructor should still be
                 told about rather than shown one "nobody is enrolled" card in
                 place of. */}
             {quizzes && (
